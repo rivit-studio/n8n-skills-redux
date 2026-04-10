@@ -1,0 +1,410 @@
+{
+  "name": "Tier 3 Example: Stripe Payment Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "stripe-webhook",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Stripe Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// VERIFY STRIPE SIGNATURE\nconst crypto = require('crypto');\n\nconst signature = $json.headers['stripe-signature'];\nconst webhookSecret = $env.STRIPE_WEBHOOK_SECRET;\nconst payload = JSON.stringify($json.body);\n\n// Parse signature components\nconst elements = signature.split(',');\nconst signatureMap = {};\nfor (const element of elements) {\n  const [key, value] = element.split('=');\n  signatureMap[key] = value;\n}\n\nconst timestamp = signatureMap['t'];\nconst expectedSignature = signatureMap['v1'];\n\n// Compute expected signature\nconst signedPayload = `${timestamp}.${payload}`;\nconst computedSignature = crypto\n  .createHmac('sha256', webhookSecret)\n  .update(signedPayload)\n  .digest('hex');\n\n// Verify\nif (computedSignature !== expectedSignature) {\n  return [{\n    json: {\n      _verified: false,\n      _error: 'Invalid signature',\n      statusCode: 401\n    }\n  }];\n}\n\n// Check timestamp (reject if older than 5 minutes)\nconst currentTime = Math.floor(Date.now() / 1000);\nif (currentTime - parseInt(timestamp) > 300) {\n  return [{\n    json: {\n      _verified: false,\n      _error: 'Timestamp too old',\n      statusCode: 401\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ...$json.body,\n    _verified: true,\n    _timestamp: timestamp\n  }\n}];"
+      },
+      "id": "verify-signature",
+      "name": "Verify Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json._verified }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "is-verified",
+      "name": "Signature Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// GENERATE IDEMPOTENCY KEY\n// Use Stripe event ID as idempotency key\nconst idempotencyKey = $json.id; // Stripe event ID\n\nreturn [{\n  json: {\n    ...$json,\n    _idempotencyKey: idempotencyKey\n  }\n}];"
+      },
+      "id": "idempotency-key",
+      "name": "Generate Idempotency Key",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "table": "processed_events",
+        "filters": {
+          "conditions": [
+            {
+              "column": "idempotency_key",
+              "operator": "eq",
+              "value": "={{ $json._idempotencyKey }}"
+            }
+          ]
+        }
+      },
+      "id": "check-duplicate",
+      "name": "Check Duplicate",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1050, 200],
+      "credentials": {
+        "supabaseApi": {
+          "id": "1",
+          "name": "Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.length }}",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "is-new-event",
+      "name": "Is New Event?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// LOG INPUT WITH AUDIT TRAIL\nconst auditLog = {\n  workflow_id: $workflow.id,\n  execution_id: $execution.id,\n  log_type: 'input',\n  stage: 'entry',\n  event_type: $json.type,\n  idempotency_key: $json._idempotencyKey,\n  payload: {\n    event_id: $json.id,\n    event_type: $json.type,\n    // Don't log full payment details\n    customer_id: $json.data?.object?.customer,\n    amount: $json.data?.object?.amount,\n    currency: $json.data?.object?.currency,\n    status: $json.data?.object?.status\n  },\n  metadata: {\n    timestamp: new Date().toISOString(),\n    stripe_timestamp: $json._timestamp\n  }\n};\n\nreturn [{json: {...$json, _auditLog: auditLog}}];"
+      },
+      "id": "audit-log",
+      "name": "Create Audit Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 100]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "payment_audit_log",
+        "columns": "workflow_id, execution_id, log_type, stage, event_type, idempotency_key, payload, metadata",
+        "values": "={{ $json._auditLog.workflow_id }}, ={{ $json._auditLog.execution_id }}, ={{ $json._auditLog.log_type }}, ={{ $json._auditLog.stage }}, ={{ $json._auditLog.event_type }}, ={{ $json._auditLog.idempotency_key }}, ={{ JSON.stringify($json._auditLog.payload) }}, ={{ JSON.stringify($json._auditLog.metadata) }}"
+      },
+      "id": "save-audit-log",
+      "name": "Save Audit Log",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1650, 100],
+      "credentials": {
+        "supabaseApi": {
+          "id": "1",
+          "name": "Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.type }}",
+              "value2": "payment_intent.succeeded"
+            }
+          ]
+        }
+      },
+      "id": "event-type",
+      "name": "Event Type?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [1850, 100]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": "orders",
+        "filters": {
+          "conditions": [
+            {
+              "column": "stripe_payment_intent_id",
+              "operator": "eq",
+              "value": "={{ $json.data.object.id }}"
+            }
+          ]
+        },
+        "columns": "status, paid_at",
+        "values": "paid, ={{ new Date().toISOString() }}"
+      },
+      "id": "update-order",
+      "name": "Update Order Status",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2050, 0],
+      "credentials": {
+        "supabaseApi": {
+          "id": "1",
+          "name": "Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "processed_events",
+        "columns": "idempotency_key, event_type, processed_at, execution_id",
+        "values": "={{ $json._idempotencyKey }}, ={{ $json.type }}, ={{ new Date().toISOString() }}, ={{ $execution.id }}"
+      },
+      "id": "mark-processed",
+      "name": "Mark as Processed",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [2250, 0],
+      "credentials": {
+        "supabaseApi": {
+          "id": "1",
+          "name": "Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// SUCCESS RESPONSE\nreturn [{\n  json: {\n    statusCode: 200,\n    body: {\n      received: true\n    }\n  }\n}];"
+      },
+      "id": "success-response",
+      "name": "200 Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2450, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// DUPLICATE - Return cached response\nreturn [{\n  json: {\n    statusCode: 200,\n    body: {\n      received: true,\n      note: 'Already processed'\n    }\n  }\n}];"
+      },
+      "id": "duplicate-response",
+      "name": "Already Processed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// AUTH FAILURE RESPONSE\nreturn [{\n  json: {\n    statusCode: 401,\n    body: {\n      error: $json._error || 'Unauthorized'\n    }\n  }\n}];"
+      },
+      "id": "auth-failure",
+      "name": "401 Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 450]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.body }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2650, 200]
+    }
+  ],
+  "connections": {
+    "Stripe Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Signature": {
+      "main": [
+        [
+          {
+            "node": "Signature Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signature Valid?": {
+      "main": [
+        [
+          {
+            "node": "Generate Idempotency Key",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "401 Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Idempotency Key": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Is New Event?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New Event?": {
+      "main": [
+        [
+          {
+            "node": "Create Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Already Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Audit Log": {
+      "main": [
+        [
+          {
+            "node": "Save Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Audit Log": {
+      "main": [
+        [
+          {
+            "node": "Event Type?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Event Type?": {
+      "main": [
+        [
+          {
+            "node": "Update Order Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Order Status": {
+      "main": [
+        [
+          {
+            "node": "Mark as Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Processed": {
+      "main": [
+        [
+          {
+            "node": "200 Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "200 Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already Processed": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "401 Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "_tier": 3,
+  "_notes": "Tier 3 Example: Stripe payment webhook handler. Includes: (1) Signature verification, (2) Timestamp validation, (3) Idempotency handling - duplicate events return cached response, (4) Audit logging for compliance, (5) Proper status codes. Additional Tier 3 requirements not shown: monitoring dashboard, alerting, rate limiting, error trigger with escalation."
+}

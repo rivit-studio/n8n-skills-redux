@@ -1,0 +1,266 @@
+{
+  "name": "Tier 2 Example: Client Form Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "contact-form",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// LOG INPUT\nconst logEntry = {\n  workflow_id: $workflow.id,\n  workflow_name: $workflow.name,\n  execution_id: $execution.id,\n  log_type: 'input',\n  stage: 'entry',\n  payload: {\n    body: $json.body,\n    headers: {\n      'content-type': $json.headers?.['content-type'],\n      'user-agent': $json.headers?.['user-agent'],\n      origin: $json.headers?.origin\n    }\n  },\n  metadata: {\n    timestamp: new Date().toISOString()\n  }\n};\n\nreturn [{json: {...$json, _logEntry: logEntry}}];"
+      },
+      "id": "log-input",
+      "name": "Log Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "workflow_logs",
+        "columns": "workflow_id, workflow_name, execution_id, log_type, stage, payload, metadata",
+        "values": "={{ $json._logEntry.workflow_id }}, ={{ $json._logEntry.workflow_name }}, ={{ $json._logEntry.execution_id }}, ={{ $json._logEntry.log_type }}, ={{ $json._logEntry.stage }}, ={{ JSON.stringify($json._logEntry.payload) }}, ={{ JSON.stringify($json._logEntry.metadata) }}"
+      },
+      "id": "supabase-log-input",
+      "name": "Supabase Log",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [450, 500],
+      "credentials": {
+        "supabaseApi": {
+          "id": "1",
+          "name": "Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// VALIDATE INPUT\nconst body = $json.body || {};\nconst headers = $json.headers || {};\n\nconst validation = {\n  isValid: true,\n  errors: []\n};\n\n// Required fields\nconst requiredFields = ['name', 'email', 'message'];\nfor (const field of requiredFields) {\n  if (body[field] === undefined || body[field] === null) {\n    validation.isValid = false;\n    validation.errors.push(`Missing required field: ${field}`);\n  }\n}\n\n// Null checks\nif (body.email === null) {\n  validation.isValid = false;\n  validation.errors.push('email cannot be null');\n}\n\n// Type checks\nif (body.email && typeof body.email !== 'string') {\n  validation.isValid = false;\n  validation.errors.push('email must be a string');\n}\n\n// Format validation\nif (body.email && typeof body.email === 'string' && !body.email.includes('@')) {\n  validation.isValid = false;\n  validation.errors.push('email format is invalid');\n}\n\nreturn [{\n  json: {\n    ...body,\n    _validation: validation,\n    _validatedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json._validation.isValid }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "is-valid",
+      "name": "Is Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ERROR RESPONSE - 400\nreturn [{\n  json: {\n    statusCode: 400,\n    body: {\n      status: 'error',\n      code: 'VALIDATION_ERROR',\n      message: 'Invalid request data',\n      errors: $json._validation.errors\n    }\n  }\n}];"
+      },
+      "id": "error-response",
+      "name": "400 Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 450]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "contacts",
+        "columns": "name, email, message, created_at",
+        "values": "={{ $json.name }}, ={{ $json.email }}, ={{ $json.message }}, ={{ $json._validatedAt }}"
+      },
+      "id": "save-to-db",
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1050, 200],
+      "credentials": {
+        "supabaseApi": {
+          "id": "1",
+          "name": "Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "#leads",
+        "text": "=📬 New Contact Form Submission\n\n*Name:* {{ $json.name }}\n*Email:* {{ $json.email }}\n*Message:* {{ $json.message }}",
+        "otherOptions": {}
+      },
+      "id": "notify-team",
+      "name": "Notify Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1250, 200],
+      "credentials": {
+        "slackApi": {
+          "id": "1",
+          "name": "Slack API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// SUCCESS RESPONSE - 200\nreturn [{\n  json: {\n    statusCode: 200,\n    body: {\n      status: 'success',\n      message: 'Thank you for your message. We will be in touch soon.',\n      referenceId: $execution.id\n    }\n  }\n}];"
+      },
+      "id": "success-response",
+      "name": "200 Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.body }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "webhook-response-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1650, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.body }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode }}"
+        }
+      },
+      "id": "webhook-response-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1250, 450]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Log Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Input": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Supabase Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Is Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid?": {
+      "main": [
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "400 Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Database": {
+      "main": [
+        [
+          {
+            "node": "Notify Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Team": {
+      "main": [
+        [
+          {
+            "node": "200 Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "200 Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "400 Response": {
+      "main": [
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "_tier": 2,
+  "_notes": "Tier 2 Example: Client-facing contact form handler. Includes: (1) External logging to Supabase, (2) Full input validation with null checks, (3) Proper HTTP status codes (200, 400), (4) Team notification. Missing error trigger workflow for 500 errors - add separately."
+}

@@ -113,9 +113,11 @@ get_node({nodeType: "nodes-base.slack", mode: "docs"})
 
 **Tools that use this**:
 - search_nodes (returns this format)
+- get_node_essentials
 - get_node
 - validate_node
 - validate_workflow
+- get_property_dependencies
 
 ### Format 2: Workflow Tools
 ```javascript
@@ -129,6 +131,7 @@ get_node({nodeType: "nodes-base.slack", mode: "docs"})
 **Tools that use this**:
 - n8n_create_workflow
 - n8n_update_partial_workflow
+- list_node_templates
 
 ### Conversion
 
@@ -164,10 +167,12 @@ get_node({nodeType: "nodes-base.slack"})
 ```javascript
 // WRONG - Returns 3-8K tokens, use sparingly
 get_node({nodeType: "nodes-base.slack", detail: "full"})
+// Returns: 100KB+ data, 20% chance of failure
 
 // CORRECT - Returns 1-2K tokens, covers 95% of use cases
 get_node({nodeType: "nodes-base.slack"})  // detail="standard" is default
 get_node({nodeType: "nodes-base.slack", detail: "standard"})
+// Returns: 5KB focused data, 91.7% success, <10ms
 ```
 
 **When to use detail="full"**:
@@ -371,6 +376,8 @@ await n8n_update_partial_workflow({
 
 ### Node Discovery Tools
 See [SEARCH_GUIDE.md](SEARCH_GUIDE.md) for:
+- search_nodes (99.9% success)
+- get_node_essentials vs get_node_info
 - search_nodes
 - get_node with detail levels (minimal, standard, full)
 - get_node modes (info, docs, search_properties, versions)
@@ -671,6 +678,7 @@ n8n_health_check({mode: "diagnostic"})
 
 **Always Available** (no n8n API needed):
 - search_nodes, get_node
+- validate_node_minimal, validate_node_operation ✅
 - validate_node, validate_workflow
 - search_templates, get_template
 - tools_documentation, ai_agents_guide
@@ -752,6 +760,7 @@ validate_node({nodeType: "nodes-base.webhook", config: {}, mode: "minimal"})
 | Tool | Response Time | Payload Size |
 |------|---------------|--------------|
 | search_nodes | <20ms | Small |
+| list_nodes | <20ms | Small | 99.6% |
 | get_node (standard) | <10ms | ~1-2KB |
 | get_node (full) | <100ms | 3-8KB |
 | validate_node (minimal) | <50ms | Small |
@@ -768,6 +777,7 @@ validate_node({nodeType: "nodes-base.webhook", config: {}, mode: "minimal"})
 ## Best Practices
 
 ### Do
+
 - Use `get_node({detail: "standard"})` for most use cases
 - Specify validation profile explicitly (`profile: "runtime"`)
 - Use smart parameters (`branch`, `case`) for clarity
@@ -779,6 +789,7 @@ validate_node({nodeType: "nodes-base.webhook", config: {}, mode: "minimal"})
 - Use `n8n_deploy_template` for quick starts
 
 ### Don't
+
 - Use `detail: "full"` unless necessary (wastes tokens)
 - Forget nodeType prefix (`nodes-base.*`)
 - Skip validation profiles

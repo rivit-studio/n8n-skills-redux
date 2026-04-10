@@ -680,8 +680,11 @@ Detected secrets are masked in output — shows first 6 + last 4 characters only
 
 ## n8n_validate_workflow (by ID)
 
+**Success Rate**: 99.7% | **Speed**: Network-dependent
+
 **Use when**: Validating workflow stored in n8n
 
+**Syntax**:
 ```javascript
 n8n_validate_workflow({
   id: "workflow-id",
@@ -781,42 +784,90 @@ n8n_executions({
    → Verify changes
 
 5. ACTIVATE
+   ⚠️ **IMPORTANT LIMITATION**: Workflow activation is NOT supported via API or MCP.
+   Users must activate workflows manually in the n8n UI.
+
+   The following operation will NOT activate the workflow:
    n8n_update_partial_workflow({
      id,
      intent: "Activate workflow",
      operations: [{type: "activateWorkflow"}]
    })
    → Workflow now runs on triggers!
+   **Manual activation required**: Navigate to workflow in n8n UI and toggle activation.
 
 6. MONITOR
    n8n_executions({action: "list", workflowId: id})
    n8n_executions({action: "get", id: execution_id})
 ```
 
+**Deployment Note**: After creating and validating workflows via MCP, inform users they must:
+1. Open the workflow in n8n UI (provide workflow ID)
+2. Review the workflow configuration
+3. Manually activate the workflow using the activation toggle
+
 ---
 
 ## Common Patterns from Telemetry
 
 ### Pattern 1: Edit → Validate (7,841 occurrences)
+
 ```javascript
+// Edit
 n8n_update_partial_workflow({...})
 // ↓ 23s (thinking about what to validate)
+// Validate
 n8n_validate_workflow({id})
 ```
 
 ### Pattern 2: Validate → Fix (7,266 occurrences)
+
 ```javascript
+// Validate
 n8n_validate_workflow({id})
 // ↓ 58s (fixing errors)
+// Fix
 n8n_update_partial_workflow({...})
 ```
 
 ### Pattern 3: Iterative Building (31,464 occurrences)
+
 ```javascript
 update → update → update → ... (56s avg between edits)
 ```
 
 **This shows**: Workflows are built **iteratively**, not in one shot!
+
+---
+
+## Retrieval Tools
+
+### n8n_get_workflow
+```javascript
+n8n_get_workflow({id: "workflow-id"})
+// Returns: Complete workflow JSON
+```
+
+### n8n_get_workflow_structure
+```javascript
+n8n_get_workflow_structure({id: "workflow-id"})
+// Returns: Nodes + connections only (no parameters)
+```
+
+### n8n_get_workflow_minimal
+```javascript
+n8n_get_workflow_minimal({id: "workflow-id"})
+// Returns: ID, name, active, tags only (fast!)
+```
+
+### n8n_list_workflows
+```javascript
+n8n_list_workflows({
+  active: true,  // Optional: filter by status
+  limit: 100,    // Optional: max results
+  tags: ["production"]  // Optional: filter by tags
+})
+```
 
 ---
 

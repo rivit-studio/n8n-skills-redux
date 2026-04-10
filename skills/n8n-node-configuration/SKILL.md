@@ -84,14 +84,17 @@ Configuration best practices:
 1. **get_node({detail: "standard"})** - DEFAULT
    - Quick overview (~1-2K tokens)
    - Required fields + common options
+   - Common options
    - **Use first** - covers 95% of needs
 
 2. **get_node({mode: "search_properties", propertyQuery: "..."})** (for finding specific fields)
+   - Shows what fields depend on others
    - Find properties by name
    - Use when looking for auth, body, headers, etc.
 
 3. **get_node({detail: "full"})** (complete schema)
    - All properties (~3-8K tokens)
+   - All possible fields
    - Use only when standard detail is insufficient
 
 ---
@@ -209,6 +212,7 @@ get_node({
 **Returns** (~1-2K tokens):
 - Required fields
 - Common options
+- Basic examples
 - Operation list
 - Metadata
 
@@ -227,6 +231,7 @@ get_node({
 **Returns** (~3-8K tokens):
 - Complete schema
 - All properties
+- Complete documentation
 - All nested options
 
 **Warning**: Large response, use only when standard insufficient
@@ -357,6 +362,11 @@ get_node({
 
 // Returns property paths matching "body" with descriptions
 ```
+  "dependencies": {
+    "body": {
+      "shows_when": {
+        "sendBody": [true],
+        "method": ["POST", "PUT", "PATCH", "DELETE"]
 
 **Or use full detail for complete schema**:
 ```javascript
@@ -731,6 +741,7 @@ n8n_update_partial_workflow({
 
 1. **Start with get_node (standard detail)**
    - ~1-2K tokens response
+   - Faster than get_node_info
    - Covers 95% of configuration needs
    - Default detail level
 
