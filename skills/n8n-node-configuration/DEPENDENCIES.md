@@ -252,8 +252,28 @@ get_node({
 // Get complete schema with displayOptions
 get_node({
   nodeType: "nodes-base.httpRequest",
+  "dependencies": {
   detail: "full"
+      "shows_when": {
+        "sendBody": [true],
+        "method": ["POST", "PUT", "PATCH", "DELETE"]
+      },
+      "required_when_shown": true
+    },
+    "queryParameters": {
+      "shows_when": {
+        "sendQuery": [true]
+      },
+      "required_when_shown": false
+    },
+    "headerParameters": {
+      "shows_when": {
+        "sendHeaders": [true]
+      },
+      "required_when_shown": false
 });
+  }
+}
 ```
 
 ### When to Use
@@ -548,6 +568,7 @@ method=POST
 
 **Solution**:
 ```javascript
+// Check dependencies
 // Check field dependencies using search_properties
 get_node({
   nodeType: "nodes-base.httpRequest",
@@ -630,6 +651,7 @@ get_node({
 **Solution**: Respect dependencies from the start
 
 ```javascript
+// Correct approach
 // Correct approach - check property dependencies
 get_node({
   nodeType: "nodes-base.httpRequest",

@@ -761,3 +761,168 @@ console.log('Input structure:', JSON.stringify(items[0], null, 2));
 - [SKILL.md](SKILL.md) - Overview and best practices
 - [DATA_ACCESS.md](DATA_ACCESS.md) - Safe data access patterns
 - [COMMON_PATTERNS.md](COMMON_PATTERNS.md) - Working examples
+- [../n8n-production-readiness/SKILL.md](../n8n-production-readiness/) - Production hardening tiers
+
+---
+
+## Deep Dive: Null vs Empty String
+
+This is the **#1 cause of silent production failures** in n8n workflows.
+
+### Why This Matters
+
+A workflow works perfectly in 50+ local tests, then fails silently in production. The root cause? A frontend sends `null` instead of `""` for one field. No validation. No logs. The workflow processes garbage and returns garbage.
+
+### The Four States of a Field
+
+```javascript
+// A field in webhook data can be:
+body.email = undefined;   // Key doesn't exist
+body.email = null;        // Key exists, explicitly null
+body.email = "";          // Key exists, empty string
+body.email = "a@b.com";   // Key exists, has value
+```
+
+**Each requires different handling.** Treating them the same causes bugs.
+
+### Comparison Table (Memorize This)
+
+| Value | `!value` | `value == null` | `value === null` | `value === ''` | `value ?? 'X'` | `value \|\| 'X'` |
+|-------|----------|-----------------|------------------|----------------|----------------|------------------|
+| `undefined` | `true` | `true` | `false` | `false` | `'X'` | `'X'` |
+| `null` | `true` | `true` | `true` | `false` | `'X'` | `'X'` |
+| `''` | `true` | `false` | `false` | `true` | `''` | `'X'` |
+| `'value'` | `false` | `false` | `false` | `false` | `'value'` | `'value'` |
+
+**Key insight:** `??` (nullish coalescing) only replaces null/undefined. `||` replaces ALL falsy values including `''`.
+
+### Pattern: Full Validation
+
+```javascript
+const body = $json.body || {};
+const validation = {isValid: true, errors: []};
+
+// Step 1: Check existence
+if (body.email === undefined) {
+  validation.errors.push('email field is missing');
+  validation.isValid = false;
+}
+// Step 2: Check for null
+else if (body.email === null) {
+  validation.errors.push('email cannot be null');
+  validation.isValid = false;
+}
+// Step 3: Check for empty (if empty not allowed)
+else if (body.email === '') {
+  validation.errors.push('email cannot be empty');
+  validation.isValid = false;
+}
+// Step 4: Check format (only if we have a value)
+else if (!body.email.includes('@')) {
+  validation.errors.push('email format invalid');
+  validation.isValid = false;
+}
+```
+
+### Pattern: Normalization
+
+```javascript
+// Normalize to consistent state before processing
+function normalizeString(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') return String(value);
+  return value.trim();
+}
+
+const email = normalizeString(body.email);
+const phone = normalizeString(body.phone);
+```
+
+### Pattern: Reject Null, Keep Empty String
+
+Sometimes an empty string is valid (optional field) but null is not:
+
+```javascript
+if (body.notes === null) {
+  return [{json: {error: 'notes cannot be null - use empty string for no notes'}}];
+}
+const notes = body.notes ?? '';  // undefined → '', null would error above, '' → ''
+```
+
+### Pattern: Type Guard Function
+
+```javascript
+function isValidString(value, options = {}) {
+  const {allowEmpty = false, minLength = 0, maxLength = Infinity} = options;
+
+  if (value === undefined || value === null) return false;
+  if (typeof value !== 'string') return false;
+  if (!allowEmpty && value === '') return false;
+  if (value.length < minLength) return false;
+  if (value.length > maxLength) return false;
+
+  return true;
+}
+
+// Usage
+if (!isValidString(body.email)) {
+  validation.errors.push('email must be a non-empty string');
+}
+
+if (!isValidString(body.notes, {allowEmpty: true, maxLength: 500})) {
+  validation.errors.push('notes must be a string under 500 characters');
+}
+```
+
+### Real Production Example
+
+This is the pattern that prevents silent failures:
+
+```javascript
+// Entry-point validation for Tier 2+ workflows
+const body = $json.body || {};
+const headers = $json.headers || {};
+
+const validation = {
+  isValid: true,
+  errors: []
+};
+
+// Required fields - check null AND empty
+const required = ['email', 'orderId'];
+for (const field of required) {
+  if (body[field] === undefined) {
+    validation.isValid = false;
+    validation.errors.push(`${field} is missing`);
+  } else if (body[field] === null) {
+    validation.isValid = false;
+    validation.errors.push(`${field} cannot be null`);
+  } else if (body[field] === '') {
+    validation.isValid = false;
+    validation.errors.push(`${field} cannot be empty`);
+  }
+}
+
+// Optional fields - normalize null to empty string
+const notes = body.notes ?? '';
+const phone = body.phone ?? '';
+
+return [{
+  json: {
+    ...body,
+    notes,  // normalized
+    phone,  // normalized
+    _validation: validation
+  }
+}];
+```
+
+### The Bottom Line
+
+**Before production:**
+1. Decide: Is null acceptable? Is empty string acceptable?
+2. Validate explicitly at entry point
+3. Normalize to consistent state
+4. Log what you receive (so you can debug when it fails)
+
+See [n8n-production-readiness](../n8n-production-readiness/) for full tier-based guidance on when to add these patterns.

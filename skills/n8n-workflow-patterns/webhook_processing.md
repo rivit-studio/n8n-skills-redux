@@ -543,3 +543,229 @@ Use `search_templates({query: "webhook"})` to find more!
 **Related**:
 - [n8n Expression Syntax](../../n8n-expression-syntax/SKILL.md) - Accessing webhook data correctly
 - [http_api_integration.md](http_api_integration.md) - Making HTTP requests in response
+- [n8n-production-readiness](../n8n-production-readiness/) - Tier system for hardening level
+
+---
+
+## Production Patterns (Tier 2+)
+
+### The Silent Failure Problem
+
+Webhooks fail silently by default. The workflow continues processing garbage data and returns garbage results. **This is the #1 source of production bugs.**
+
+**Real example:** A workflow worked in 50+ local tests. In production, it returned blank responses. The root cause? A frontend sent `null` instead of `""` for one field. No validation. No logs. Silent failure.
+
+**Solution:** Entry-point validation + external logging.
+
+---
+
+### Entry-Point Validation Pattern
+
+For Tier 2+ workflows, validate immediately after the Webhook node:
+
+```javascript
+// Code node: Validate Input (place immediately after Webhook)
+const body = $json.body || {};
+const headers = $json.headers || {};
+
+const validation = {
+  isValid: true,
+  errors: [],
+  warnings: []
+};
+
+// === REQUIRED FIELDS ===
+const requiredFields = ['email', 'orderId', 'items'];
+for (const field of requiredFields) {
+  if (body[field] === undefined || body[field] === null) {
+    validation.isValid = false;
+    validation.errors.push(`Missing required field: ${field}`);
+  }
+}
+
+// === NULL vs EMPTY STRING ===
+// This is the #1 production bug!
+if (body.email === null) {
+  validation.isValid = false;
+  validation.errors.push('email cannot be null (expected string or empty)');
+}
+
+// === TYPE CHECKS ===
+if (body.email && typeof body.email !== 'string') {
+  validation.isValid = false;
+  validation.errors.push('email must be a string');
+}
+
+if (body.items && !Array.isArray(body.items)) {
+  validation.isValid = false;
+  validation.errors.push('items must be an array');
+}
+
+// === FORMAT VALIDATION ===
+if (body.email && typeof body.email === 'string' && !body.email.includes('@')) {
+  validation.isValid = false;
+  validation.errors.push('email format is invalid');
+}
+
+// === AUTH CHECK ===
+if (!headers['x-api-key']) {
+  validation.isValid = false;
+  validation.errors.push('Missing x-api-key header');
+}
+
+return [{
+  json: {
+    ...body,
+    _validation: validation,
+    _validatedAt: new Date().toISOString()
+  }
+}];
+```
+
+Then use IF node:
+- **True**: `{{$json._validation.isValid}}` equals `true` → Continue
+- **False**: → Error Response (400)
+
+---
+
+### External Logging Pattern
+
+n8n's internal logs won't help at 2 AM. Log to an external database.
+
+**Database schema:**
+```sql
+CREATE TABLE workflow_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  workflow_id TEXT NOT NULL,
+  workflow_name TEXT,
+  execution_id TEXT,
+  log_type TEXT NOT NULL,      -- 'input', 'decision', 'output', 'error'
+  stage TEXT,                   -- 'entry', 'validation', 'processing', 'response'
+  payload JSONB,
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**Log at entry (Code node after Webhook):**
+```javascript
+const logEntry = {
+  workflow_id: $workflow.id,
+  workflow_name: $workflow.name,
+  execution_id: $execution.id,
+  log_type: 'input',
+  stage: 'entry',
+  payload: {
+    body: $json.body,
+    headers: {
+      'content-type': $json.headers?.['content-type'],
+      'user-agent': $json.headers?.['user-agent'],
+      // NEVER log: authorization, x-api-key, cookies
+    }
+  },
+  metadata: {
+    timestamp: new Date().toISOString(),
+    nodeId: $node.id
+  }
+};
+
+return [{json: {...$json, _logEntry: logEntry}}];
+```
+
+Then connect to Supabase/Postgres node to persist.
+
+---
+
+### HTTP Status Codes Pattern
+
+Return proper status codes, not just "success" or "error":
+
+| Code | Meaning | When to Use |
+|------|---------|-------------|
+| `200` | Success | Request processed |
+| `400` | Bad Request | Invalid input (validation failed) |
+| `401` | Unauthorized | Missing/invalid API key |
+| `403` | Forbidden | Valid auth, but not allowed |
+| `404` | Not Found | Resource doesn't exist |
+| `500` | Internal Error | Unexpected failure |
+
+**Error response pattern:**
+```javascript
+// 400 - Validation Error
+return [{
+  json: {
+    statusCode: 400,
+    body: {
+      status: 'error',
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid request data',
+      errors: $json._validation.errors
+    }
+  }
+}];
+
+// 401 - Auth Error
+return [{
+  json: {
+    statusCode: 401,
+    body: {
+      status: 'error',
+      code: 'UNAUTHORIZED',
+      message: 'Invalid or missing API key'
+    }
+  }
+}];
+
+// 500 - Internal Error
+return [{
+  json: {
+    statusCode: 500,
+    body: {
+      status: 'error',
+      code: 'INTERNAL_ERROR',
+      message: 'An unexpected error occurred',
+      referenceId: $execution.id  // For support tickets
+    }
+  }
+}];
+```
+
+**Webhook Response node config:**
+- Respond With: JSON
+- Status Code: `={{$json.statusCode}}`
+- Response Body: `={{JSON.stringify($json.body)}}`
+
+---
+
+### Production Webhook Checklist (Tier 2)
+
+**Validation:**
+- [ ] Validate immediately after Webhook node
+- [ ] Check required fields exist
+- [ ] Check null vs empty string explicitly
+- [ ] Verify data types
+- [ ] Validate formats (email, URL, etc.)
+- [ ] IF node routes invalid → error response
+
+**Logging:**
+- [ ] Log entry point (input received)
+- [ ] Log validation result
+- [ ] Log key decisions/actions
+- [ ] Log response sent
+- [ ] Error Trigger logs failures
+- [ ] Sensitive data excluded from logs
+
+**Error Handling:**
+- [ ] Proper HTTP status codes (400, 401, 404, 500)
+- [ ] Structured error responses
+- [ ] Reference ID in 500 errors
+- [ ] Error Trigger → team notification
+
+**Testing:**
+- [ ] Empty input test `{}`
+- [ ] Null values test `{"field": null}`
+- [ ] Wrong types test `{"count": "five"}`
+- [ ] Missing auth test
+- [ ] Invalid auth test
+
+See [n8n-production-readiness](../n8n-production-readiness/) for full tier system and additional patterns.

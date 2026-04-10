@@ -1108,3 +1108,422 @@ return [{json: {report, items: top10}}];
 - [DATA_ACCESS.md](DATA_ACCESS.md) - Data access methods
 - [ERROR_PATTERNS.md](ERROR_PATTERNS.md) - Avoid common mistakes
 - [BUILTIN_FUNCTIONS.md](BUILTIN_FUNCTIONS.md) - Built-in helpers
+- [../n8n-production-readiness/SKILL.md](../n8n-production-readiness/) - Production hardening tiers
+
+---
+
+## Pattern 11: Entry-Point Validation (Tier 2+)
+
+**Use Case**: Webhook validation, data integrity, production hardening
+
+**When to use:**
+- Receiving webhook data
+- Processing client-submitted forms
+- Any Tier 2+ production workflow
+- Preventing silent failures
+
+**Key Techniques**: Schema validation, null vs empty string handling, error responses
+
+### Complete Example
+
+```javascript
+// Full entry-point validation for Tier 2 workflows
+// Place immediately after Webhook node
+const body = $json.body || {};
+const headers = $json.headers || {};
+
+const validation = {
+  isValid: true,
+  errors: [],
+  warnings: []
+};
+
+// === REQUIRED FIELDS ===
+const requiredFields = ['email', 'orderId', 'items'];
+for (const field of requiredFields) {
+  if (body[field] === undefined || body[field] === null) {
+    validation.isValid = false;
+    validation.errors.push(`Missing required field: ${field}`);
+  }
+}
+
+// === NULL vs EMPTY STRING ===
+// This is the #1 production bug!
+if (body.email === null) {
+  validation.isValid = false;
+  validation.errors.push('email cannot be null (expected string or empty)');
+}
+
+// === TYPE CHECKS ===
+if (body.email && typeof body.email !== 'string') {
+  validation.isValid = false;
+  validation.errors.push('email must be a string');
+}
+
+if (body.items && !Array.isArray(body.items)) {
+  validation.isValid = false;
+  validation.errors.push('items must be an array');
+}
+
+if (body.quantity && typeof body.quantity !== 'number') {
+  validation.isValid = false;
+  validation.errors.push('quantity must be a number');
+}
+
+// === FORMAT VALIDATION ===
+if (body.email && typeof body.email === 'string' && !body.email.includes('@')) {
+  validation.isValid = false;
+  validation.errors.push('email format is invalid');
+}
+
+// === AUTHENTICATION CHECK ===
+if (!headers['x-api-key']) {
+  validation.isValid = false;
+  validation.errors.push('Missing x-api-key header');
+}
+
+return [{
+  json: {
+    ...body,
+    _validation: validation,
+    _validatedAt: new Date().toISOString()
+  }
+}];
+```
+
+**After validation, use IF node:**
+- True branch: `{{$json._validation.isValid}}` equals `true` → Continue processing
+- False branch: → Error Response node (see Pattern 13)
+
+### Variations
+
+```javascript
+// Variation 1: Validate nested objects
+if (body.address && typeof body.address !== 'object') {
+  validation.errors.push('address must be an object');
+} else if (body.address) {
+  if (!body.address.street) validation.errors.push('address.street is required');
+  if (!body.address.city) validation.errors.push('address.city is required');
+}
+
+// Variation 2: Validate arrays of objects
+if (Array.isArray(body.items)) {
+  body.items.forEach((item, index) => {
+    if (!item.sku) validation.errors.push(`items[${index}].sku is required`);
+    if (typeof item.quantity !== 'number') {
+      validation.errors.push(`items[${index}].quantity must be a number`);
+    }
+  });
+}
+
+// Variation 3: With warnings (non-blocking)
+if (!body.phone) {
+  validation.warnings.push('phone not provided - SMS notifications disabled');
+}
+```
+
+---
+
+## Pattern 12: External Logging (Tier 2+)
+
+**Use Case**: Debugging production issues, audit trails, workflow observability
+
+**When to use:**
+- Tier 2+ workflows
+- Debugging "silent failures"
+- Building audit trails
+- Any time you need to see what data is coming in
+
+**Key Techniques**: Structured logging, sensitive data exclusion, stage tracking
+
+### Complete Example
+
+```javascript
+// Structured log entry - use at key workflow stages
+// Stage options: 'entry', 'validation', 'processing', 'response', 'error'
+const logEntry = {
+  workflow_id: $workflow.id,
+  workflow_name: $workflow.name,
+  execution_id: $execution.id,
+  log_type: 'input',    // 'input', 'decision', 'output', 'error'
+  stage: 'entry',
+  payload: {
+    body: $json.body,
+    headers: {
+      'content-type': $json.headers?.['content-type'],
+      'user-agent': $json.headers?.['user-agent'],
+      // NEVER log: authorization, x-api-key, cookies
+    }
+  },
+  metadata: {
+    timestamp: new Date().toISOString(),
+    nodeId: $node.id
+  }
+};
+
+return [{json: {...$json, _logEntry: logEntry}}];
+```
+
+**Then connect to Supabase/Postgres node** to persist the log.
+
+### Log at Each Stage
+
+```javascript
+// Entry log (after webhook)
+const entryLog = {
+  log_type: 'input',
+  stage: 'entry',
+  payload: { body: $json.body, headers: sanitizedHeaders }
+};
+
+// Validation log (after validation node)
+const validationLog = {
+  log_type: 'decision',
+  stage: 'validation',
+  payload: {
+    isValid: $json._validation.isValid,
+    errors: $json._validation.errors
+  }
+};
+
+// Processing log (at key decision points)
+const processingLog = {
+  log_type: 'decision',
+  stage: 'processing',
+  payload: {
+    action: 'order_created',
+    orderId: $json.orderId
+  }
+};
+
+// Response log (before sending response)
+const responseLog = {
+  log_type: 'output',
+  stage: 'response',
+  payload: {
+    statusCode: 200,
+    responseBody: { /* sanitized response */ }
+  }
+};
+```
+
+### Error Logging (Error Trigger workflow)
+
+```javascript
+// In Error Trigger workflow
+const errorLog = {
+  workflow_id: $json.workflow?.id,
+  execution_id: $json.execution?.id,
+  log_type: 'error',
+  stage: 'error_handler',
+  payload: {
+    error_message: $json.execution?.error?.message,
+    error_node: $json.execution?.error?.node?.name,
+    error_stack: $json.execution?.error?.stack
+  },
+  metadata: {
+    timestamp: new Date().toISOString()
+  }
+};
+
+return [{json: errorLog}];
+```
+
+---
+
+## Pattern 13: HTTP Error Responses (Tier 2+)
+
+**Use Case**: Proper API responses, client feedback, debugging support
+
+**When to use:**
+- Building webhook APIs
+- Any workflow that needs to communicate failure reasons
+- Tier 2+ production workflows
+
+**Key Techniques**: Status codes, structured error bodies, reference IDs
+
+### Complete Example
+
+```javascript
+// Validation error response (400)
+function validationErrorResponse(errors) {
+  return [{
+    json: {
+      statusCode: 400,
+      body: {
+        status: 'error',
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request data',
+        errors: errors  // Array of specific issues
+      }
+    }
+  }];
+}
+
+// Authentication error response (401)
+function authErrorResponse() {
+  return [{
+    json: {
+      statusCode: 401,
+      body: {
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'Invalid or missing API key'
+      }
+    }
+  }];
+}
+
+// Not found response (404)
+function notFoundResponse(resourceType, resourceId) {
+  return [{
+    json: {
+      statusCode: 404,
+      body: {
+        status: 'error',
+        code: 'NOT_FOUND',
+        message: `${resourceType} not found`,
+        resourceId: resourceId
+      }
+    }
+  }];
+}
+
+// Internal error response (500)
+function internalErrorResponse(executionId) {
+  return [{
+    json: {
+      statusCode: 500,
+      body: {
+        status: 'error',
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+        referenceId: executionId  // For support tickets
+      }
+    }
+  }];
+}
+
+// Usage based on validation result
+const validation = $json._validation;
+
+if (!validation.isValid) {
+  return validationErrorResponse(validation.errors);
+}
+
+// Continue with processing...
+```
+
+### Webhook Response Node Configuration
+
+Configure the Respond to Webhook node:
+- **Respond With**: JSON
+- **Status Code**: `={{$json.statusCode}}`
+- **Response Body**: `={{JSON.stringify($json.body)}}`
+
+---
+
+## Pattern 14: Null vs Empty String Handling
+
+**Use Case**: Preventing the #1 production bug in n8n workflows
+
+**When to use:**
+- Processing external data (webhooks, APIs)
+- Any field that might come from user input
+- Before comparing or storing values
+
+**Key Techniques**: Explicit null checks, nullish coalescing, type guards
+
+### The Problem
+
+```javascript
+// A field can be:
+// - undefined  → key doesn't exist
+// - null       → key exists, value is null
+// - ''         → key exists, value is empty string
+// - 'value'    → key exists, has value
+
+// ❌ DANGER: These all behave differently!
+const value = body.email;           // Could be any of the above
+const check1 = !value;              // true for undefined, null, ''
+const check2 = value == null;       // true for undefined, null (not '')
+const check3 = value === null;      // true ONLY for null
+const check4 = value === '';        // true ONLY for empty string
+```
+
+### Complete Example
+
+```javascript
+// Explicit null handling patterns
+
+// Pattern A: Reject null, accept empty string
+if (body.email === null) {
+  return [{json: {error: 'email cannot be null', statusCode: 400}}];
+}
+const email = body.email || '';  // Now safe: undefined → '', keeps ''
+
+// Pattern B: Normalize null to empty string
+const email = body.email ?? '';  // null/undefined → '', keeps ''
+
+// Pattern C: Check for "real" value (not null, not undefined, not '')
+const hasEmail = body.email != null && body.email !== '';
+
+// Pattern D: Full type guard
+function isValidString(value) {
+  return typeof value === 'string' && value.length > 0;
+}
+
+if (!isValidString(body.email)) {
+  return [{json: {error: 'email must be a non-empty string'}}];
+}
+```
+
+### Comparison Table
+
+| Value | `!value` | `value == null` | `value === null` | `value === ''` | `value ?? 'default'` |
+|-------|----------|-----------------|------------------|----------------|---------------------|
+| `undefined` | `true` | `true` | `false` | `false` | `'default'` |
+| `null` | `true` | `true` | `true` | `false` | `'default'` |
+| `''` | `true` | `false` | `false` | `true` | `''` |
+| `'value'` | `false` | `false` | `false` | `false` | `'value'` |
+
+### Real-World Example
+
+```javascript
+// Webhook processing with explicit null handling
+const body = $json.body || {};
+
+// These are the exact checks that prevent silent failures:
+const validation = {isValid: true, errors: []};
+
+// Check 1: Field exists and is not null
+if (body.orderId === undefined) {
+  validation.errors.push('orderId is missing');
+  validation.isValid = false;
+} else if (body.orderId === null) {
+  validation.errors.push('orderId cannot be null');
+  validation.isValid = false;
+}
+
+// Check 2: Field has actual content (not just empty)
+if (body.orderId !== undefined && body.orderId !== null && body.orderId === '') {
+  validation.errors.push('orderId cannot be empty');
+  validation.isValid = false;
+}
+
+// After validation, safe to use:
+const orderId = body.orderId;  // Guaranteed to be a real value
+```
+
+---
+
+## Production Patterns Summary
+
+| Pattern | Purpose | When to Add |
+|---------|---------|-------------|
+| Pattern 11 (Validation) | Catch bad data at entry | Tier 2+ |
+| Pattern 12 (Logging) | Debug production issues | Tier 2+ |
+| Pattern 13 (Error Responses) | Proper API communication | Tier 2+ |
+| Pattern 14 (Null Handling) | Prevent #1 bug | Always |
+
+**The 80/20 Rule**: For production workflows, the core logic is only 20% of the work. The other 80% is validation, error handling, and logging. See [n8n-production-readiness](../n8n-production-readiness/) for the full tier system.

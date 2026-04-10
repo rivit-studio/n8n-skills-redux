@@ -66,6 +66,7 @@ The `get_node` tool provides all node information with different detail levels a
 
 **Use when**: You've found the node and need configuration details
 
+**Syntax**:
 ```javascript
 get_node({
   nodeType: "nodes-base.slack",      // Required: SHORT prefix format
@@ -99,8 +100,12 @@ get_node({
 
 **Speed**: <100ms | **Size**: ~3-8K tokens
 
+**Use when**:
 **Use when**: Debugging complex configuration, need complete schema
+- Need complete property schema
+- Exploring advanced features
 
+**Syntax**:
 ```javascript
 get_node({
   nodeType: "nodes-base.httpRequest",
@@ -110,6 +115,11 @@ get_node({
 
 **Warning**: Large payload! Use `standard` for most cases.
 
+**Better alternatives**:
+1. get_node_essentials - operations list
+2. get_node_documentation - readable docs
+3. search_node_properties - specific property
+
 ---
 
 ## get_node Modes
@@ -118,8 +128,10 @@ get_node({
 
 **Use when**: Need human-readable documentation with examples
 
+**Syntax**:
 ```javascript
 get_node({
+  category: "trigger",        // Optional: filter by category
   nodeType: "nodes-base.slack",
   mode: "docs"
 })
@@ -129,14 +141,23 @@ get_node({
 - Usage examples
 - Authentication guide
 - Common patterns
+- `trigger` - Webhook, Schedule, Manual, etc. (108 total)
+- `transform` - Code, Set, Function, etc.
+- `output` - HTTP Request, Email, Slack, etc.
 - Best practices
+- `AI` - AI-capable nodes (270 total)
 
 **Better than raw schema for learning!**
+- `n8n-nodes-base` - Core nodes (437 total)
+- `@n8n/n8n-nodes-langchain` - AI nodes (100 total)
+
+---
 
 ### mode="search_properties" (FIND SPECIFIC FIELDS)
 
 **Use when**: Looking for specific property in a node
 
+**Syntax**:
 ```javascript
 get_node({
   nodeType: "nodes-base.httpRequest",
@@ -214,6 +235,7 @@ get_node({
 
 Add type structure metadata (validation rules, JS types)
 
+**Syntax**:
 ```javascript
 get_node({
   nodeType: "nodes-base.if",
@@ -224,6 +246,9 @@ get_node({
 Use for complex nodes like filter, resourceMapper
 
 ### includeExamples
+- Authentication guide
+- Common patterns
+- Best practices
 
 Include real-world configuration examples from templates
 
@@ -276,6 +301,7 @@ Step 4: Use in Workflow
 | `get_node (standard)` | **Get config (DEFAULT)** | <10ms | 1-2K |
 | `get_node (minimal)` | Quick metadata | <5ms | 200 |
 | `get_node (full)` | Complex debugging | <100ms | 3-8K |
+| list_nodes | Browse category | 99.6% | <20ms | Small |
 | `get_node (docs)` | Learn usage | Fast | Medium |
 | `get_node (search_properties)` | Find specific field | Fast | Small |
 | `get_node (versions)` | Check versions | Fast | Small |

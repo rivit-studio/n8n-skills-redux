@@ -410,3 +410,51 @@ Use `search_templates` and `get_template` from n8n-mcp tools to find examples!
 - n8n Expression Syntax - Write expressions correctly
 - n8n Validation Expert - Validate and fix errors
 - n8n Node Configuration - Configure specific operations
+- [n8n Production Readiness](../n8n-production-readiness/) - Tiered hardening for production
+
+---
+
+## The 80/20 Rule (Production Workflows)
+
+**The workflow logic is only 20% of the work.** The other 80% is validation, error handling, logging, and testing.
+
+| Component | Tier 1 (Prototype) | Tier 2 (Production) | Tier 3 (Critical) |
+|-----------|-------------------|---------------------|-------------------|
+| **Core logic** | 70% | 20% | 10% |
+| **Validation** | 10% | 20% | 15% |
+| **Error handling** | 10% | 20% | 20% |
+| **Logging** | 5% | 20% | 20% |
+| **Testing** | 5% | 20% | 15% |
+| **Monitoring/Ops** | — | — | 20% |
+
+This is why "works on my machine" doesn't mean "ready for production."
+
+See [n8n-production-readiness](../n8n-production-readiness/) for tier selection and detailed checklists.
+
+---
+
+## Tiered Deployment Checklists
+
+### Tier 1: Internal / Prototype
+- [ ] Basic null checks on critical fields
+- [ ] Try-catch around external API calls
+- [ ] Error Trigger → notification on failure
+- [ ] Manual happy-path test
+
+### Tier 2: Production / Client-Facing
+- [ ] Full input validation at entry point (see [webhook_processing.md](webhook_processing.md))
+- [ ] Null vs empty string explicitly handled
+- [ ] External logging (Supabase/Postgres)
+- [ ] Proper HTTP status codes (400, 401, 404, 500)
+- [ ] Team notifications on errors
+- [ ] Breaking tests (empty input, null values, wrong types)
+- [ ] Test database before production
+
+### Tier 3: Mission-Critical / High-Volume
+- [ ] Everything from Tier 2, plus:
+- [ ] Monitoring dashboard (Grafana, Datadog)
+- [ ] Alerting with escalation (PagerDuty)
+- [ ] Idempotency keys for duplicate handling
+- [ ] Rate limiting
+- [ ] Rollback plan documented
+- [ ] Load tested at 2-3x expected volume

@@ -22,6 +22,7 @@ The `validate_node` tool provides all validation capabilities with different mod
 
 **Use when**: Checking what fields are required
 
+**Syntax**:
 ```javascript
 validate_node({
   nodeType: "nodes-base.slack",
@@ -42,10 +43,13 @@ validate_node({
 
 ### Full Validation (mode="full", DEFAULT)
 
+## validate_node_operation (FULL VALIDATION)
+
 **Speed**: <100ms
 
 **Use when**: Validating actual configuration before deployment
 
+**Syntax**:
 ```javascript
 validate_node({
   nodeType: "nodes-base.slack",
