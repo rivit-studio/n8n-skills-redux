@@ -4,7 +4,7 @@
 
 **Expert Claude Code skills for building flawless n8n workflows using the n8n-mcp MCP server**
 
-[![GitHub stars](https://img.shields.io/github/stars/czlonkowski/n8n-skills?style=social)](https://github.com/czlonkowski/n8n-skills)
+[![GitHub stars](https://img.shields.io/github/stars/rivit-studio/n8n-skills-redux?style=social)](https://github.com/rivit-studio/n8n-skills-redux)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![n8n-mcp](https://img.shields.io/badge/n8n--mcp-compatible-green.svg)](https://github.com/czlonkowski/n8n-mcp)
 
@@ -135,29 +135,20 @@ Write Python code in n8n Code nodes with proper limitations awareness.
 
 ### Claude Code
 
-**Method 1: Plugin Installation** (Recommended)
+**Method 1: Via Marketplace** (Recommended)
 ```bash
-# Install directly as a Claude Code plugin
-/plugin install czlonkowski/n8n-skills
+# Add marketplace, then install
+/plugin marketplace add rivit-studio/n8n-skills-redux
+/plugin install n8n-skills-redux@rivit-studio
 ```
 
-**Method 2: Via Marketplace**
-```bash
-# Add as marketplace, then browse and install
-/plugin marketplace add czlonkowski/n8n-skills
-
-# Then browse available plugins
-/plugin install
-# Select "n8n-mcp-skills" from the list
-```
-
-**Method 3: Manual Installation**
+**Method 2: Manual Installation**
 ```bash
 # 1. Clone this repository
-git clone https://github.com/czlonkowski/n8n-skills.git
+git clone https://github.com/rivit-studio/n8n-skills-redux.git
 
 # 2. Copy skills to your Claude Code skills directory
-cp -r n8n-skills/skills/* ~/.claude/skills/
+cp -r n8n-skills-redux/skills/* ~/.claude/skills/
 
 # 3. Reload Claude Code
 # Skills will activate automatically
@@ -263,7 +254,9 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🙏 Credits
 
-**Conceived by Romuald Członkowski**
+**Fork maintained by [rivit-studio](https://github.com/rivit-studio)**
+
+**Originally conceived by Romuald Członkowski**
 - Website: [www.aiadvisors.pl/en](https://www.aiadvisors.pl/en)
 - Part of the [n8n-mcp project](https://github.com/czlonkowski/n8n-mcp)
 
