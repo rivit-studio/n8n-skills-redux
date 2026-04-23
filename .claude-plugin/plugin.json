@@ -3,8 +3,8 @@
   "version": "1.6.0",
   "description": "Expert skills for building n8n workflows with n8n-mcp",
   "author": {
-    "name": "Romuald Członkowski",
-    "url": "https://www.aiadvisors.pl/en"
+    "name": "Asher Peruscini",
+    "url": "https://github.com/rivit-studio"
   },
   "license": "MIT",
   "keywords": [
@@ -18,6 +18,6 @@
     "javascript",
     "python"
   ],
-  "repository": "https://github.com/czlonkowski/n8n-skills",
-  "homepage": "https://github.com/czlonkowski/n8n-skills"
+  "repository": "https://github.com/rivit-studio/n8n-skills-redux",
+  "homepage": "https://github.com/rivit-studio/n8n-skills-redux"
 }

@@ -2,8 +2,8 @@
   "name": "n8n-mcp-skills",
   "description": "Expert skills for building n8n workflows",
   "owner": {
-    "name": "Romuald Członkowski",
-    "url": "https://www.aiadvisors.pl/en"
+    "name": "Asher Peruscini",
+    "url": "https://github.com/rivit-studio"
   },
   "plugins": [
     {
@@ -12,8 +12,8 @@
       "description": "Complete bundle: 7 expert skills for building flawless n8n workflows using n8n-mcp MCP server. Includes skills for expression syntax, MCP tools usage, workflow patterns, validation, node configuration, JavaScript code, and Python code.",
       "version": "1.6.0",
       "author": {
-        "name": "Romuald Członkowski",
-        "url": "https://www.aiadvisors.pl/en"
+        "name": "Asher Peruscini",
+        "url": "https://github.com/rivit-studio"
       },
       "category": "automation",
       "keywords": [
@@ -28,8 +28,8 @@
         "python",
         "skills"
       ],
-      "homepage": "https://github.com/czlonkowski/n8n-skills",
-      "repository": "https://github.com/czlonkowski/n8n-skills",
+      "homepage": "https://github.com/rivit-studio/n8n-skills-redux",
+      "repository": "https://github.com/rivit-studio/n8n-skills-redux",
       "license": "MIT"
     }
   ]
