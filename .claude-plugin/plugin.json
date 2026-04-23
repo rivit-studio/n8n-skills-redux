@@ -1,7 +1,7 @@
 {
   "name": "n8n-skills-redux",
   "version": "1.6.0",
-  "description": "Expert skills for building n8n workflows with n8n-mcp",
+  "description": "Expert skills and hardening tools for building n8n workflows with n8n-mcp",
   "author": {
     "name": "Asher Peruscini",
     "url": "https://github.com/rivit-studio"
@@ -13,6 +13,7 @@
     "automation",
     "mcp",
     "validation",
+    "hardening",
     "expressions",
     "code",
     "javascript",

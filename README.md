@@ -1,4 +1,6 @@
-# n8n-skills
+# n8n-skills-redux
+
+## forked from czlonkowski/n8n-skills
 
 **Expert Claude Code skills for building flawless n8n workflows using the n8n-mcp MCP server**
 
