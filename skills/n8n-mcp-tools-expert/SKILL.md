@@ -1,6 +1,6 @@
 ---
 name: n8n-mcp-tools-expert
-description: Expert guide for using n8n-mcp MCP tools effectively. Use when searching for nodes, validating configurations, accessing templates, managing workflows, managing credentials, auditing instance security, or using any n8n-mcp tool. Provides tool selection guidance, parameter formats, and common patterns.
+description: Expert guide for using n8n-mcp MCP tools effectively. Use when searching for nodes, validating configurations, accessing templates, managing workflows, managing credentials, auditing instance security, or using any n8n-mcp tool. Provides tool selection guidance, parameter formats, and common patterns. IMPORTANT — Always consult this skill before calling any n8n-mcp tool — it prevents common mistakes like wrong nodeType formats, incorrect parameter structures, and inefficient tool usage. If the user mentions n8n, workflows, nodes, or automation and you have n8n MCP tools available, use this skill first.
 ---
 
 # n8n MCP Tools Expert
@@ -261,6 +261,51 @@ n8n_update_partial_workflow({id, operations: [...]})
   source: "Switch",
   target: "Handler A",
   case: 0
+}
+```
+
+### Mistake 7: Wrong Parameter Name for updateNode
+
+**Problem**: Using `parameters` instead of `updates`
+
+```javascript
+// WRONG
+n8n_update_partial_workflow({
+  id: "wf-123",
+  operations: [{
+    type: "updateNode",
+    nodeName: "HTTP Request",
+    parameters: {url: "..."}  // ❌ Wrong key
+  }]
+})
+
+// CORRECT
+n8n_update_partial_workflow({
+  id: "wf-123",
+  operations: [{
+    type: "updateNode",
+    nodeName: "HTTP Request",
+    updates: {url: "..."}  // ✅ Correct key
+  }]
+})
+```
+
+### Mistake 8: Wrong Credential Attachment Format
+
+**Problem**: Credentials not attaching to nodes
+
+```javascript
+// WRONG - credentials as flat object
+updates: {credentials: "myApiKey"}
+
+// CORRECT - credentials nested by type with id and name
+updates: {
+  credentials: {
+    httpHeaderAuth: {
+      id: "abc123",
+      name: "My API Key"
+    }
+  }
 }
 ```
 
@@ -777,7 +822,8 @@ validate_node({nodeType: "nodes-base.webhook", config: {}, mode: "minimal"})
 ## Best Practices
 
 ### Do
-
+- For simple workflows (<=5 nodes), use MCP tools directly — don't over-engineer the investigation
+- Use `patchNodeField` for surgical edits to Code node content instead of replacing the entire node
 - Use `get_node({detail: "standard"})` for most use cases
 - Specify validation profile explicitly (`profile: "runtime"`)
 - Use smart parameters (`branch`, `case`) for clarity
