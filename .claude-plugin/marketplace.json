@@ -1,5 +1,5 @@
 {
-  "name": "n8n-mcp-skills",
+  "name": "rivit-studio",
   "description": "Expert skills for building n8n workflows",
   "owner": {
     "name": "Asher Peruscini",
@@ -7,7 +7,7 @@
   },
   "plugins": [
     {
-      "name": "n8n-mcp-skills",
+      "name": "n8n-skills-redux",
       "source": "./",
       "description": "Complete bundle: 7 expert skills for building flawless n8n workflows using n8n-mcp MCP server. Includes skills for expression syntax, MCP tools usage, workflow patterns, validation, node configuration, JavaScript code, and Python code.",
       "version": "1.6.0",

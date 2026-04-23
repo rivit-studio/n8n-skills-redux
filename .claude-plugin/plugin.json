@@ -1,5 +1,5 @@
 {
-  "name": "n8n-mcp-skills",
+  "name": "n8n-skills-redux",
   "version": "1.6.0",
   "description": "Expert skills for building n8n workflows with n8n-mcp",
   "author": {
